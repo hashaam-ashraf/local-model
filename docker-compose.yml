@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    image: local-model-api
+    env_file: .env
+    volumes:
+      - ./projects:/app/projects:ro
+      - ./kb:/app/kb:ro
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on: [ollama, qdrant]
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"  # OpenAI-compatible endpoint for other projects on this host
+    # On a GPU host:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  qdrant:
+    image: qdrant/qdrant
+    volumes:
+      - qdrant:/qdrant/storage
+
+  # docker compose run --rm test
+  test:
+    image: local-model-api
+    profiles: [test]
+    entrypoint: ["sh", "-c", "pip install -q --user --no-warn-script-location pytest httpx && python -m pytest \"$@\"", "--"]
+    command: ["-q", "-p", "no:cacheprovider"]
+    environment:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    volumes:
+      - ./tests:/app/tests:ro
+
+volumes:
+  ollama:
+  qdrant:

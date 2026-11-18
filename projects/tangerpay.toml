@@ -1,0 +1,5 @@
+name = "Tangerpay"
+kb_path = "tangerpay-kb"
+system_prompt = """
+You are the Tangerpay support assistant. Be concise, friendly and practical.
+"""
