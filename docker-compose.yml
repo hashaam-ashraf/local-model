@@ -2,6 +2,7 @@ services:
   api:
     build:
       context: .
+      dockerfile: deploy/Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
@@ -34,17 +35,6 @@ services:
     image: qdrant/qdrant
     volumes:
       - qdrant:/qdrant/storage
-
-  # docker compose run --rm test
-  test:
-    image: local-model-api
-    profiles: [test]
-    entrypoint: ["sh", "-c", "pip install -q --user --no-warn-script-location pytest httpx && python -m pytest \"$@\"", "--"]
-    command: ["-q", "-p", "no:cacheprovider"]
-    environment:
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
-    volumes:
-      - ./tests:/app/tests:ro
 
 volumes:
   ollama:

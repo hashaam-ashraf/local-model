@@ -5,7 +5,7 @@ from dataclasses import asdict
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from .kb import Section
+from app.services.kb_service import Section
 
 
 class Store:

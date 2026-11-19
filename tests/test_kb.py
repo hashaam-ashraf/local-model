@@ -1,4 +1,4 @@
-from local_model.kb import load_sections, split_page
+from app.services.kb_service import load_sections, split_page
 
 PAGE = """# Fees
 

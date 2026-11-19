@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
 
-from local_model.config import Settings
-from local_model.main import create_app
-from local_model.store import Store
+from app.config import Settings
+from app.main import create_app
+from app.services.store_service import Store
 
 WORDS = ["refund", "fee", "card", "limit"]
 ADMIN = {"Authorization": "Bearer secret"}

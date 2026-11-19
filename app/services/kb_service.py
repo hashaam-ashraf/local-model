@@ -1,8 +1,12 @@
-"""Markdown knowledge base pages split into sections by heading."""
+"""Markdown knowledge base pages split into sections by heading, and indexing them."""
 
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from fastapi import HTTPException
+
+from app.config import Project, Settings
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*)")
 
@@ -53,3 +57,11 @@ def load_sections(root: Path) -> list[Section]:
             continue
         sections += split_page(rel.as_posix(), path.read_text(encoding="utf-8"))
     return sections
+
+
+def rebuild_index(settings: Settings, llm, store, project: Project) -> int:
+    if not project.kb_path:
+        raise HTTPException(400, f"Project {project.slug} has no knowledge base")
+    sections = load_sections(settings.kb_root / project.kb_path)
+    store.replace(project.slug, sections, llm.embed([s.content for s in sections]))
+    return len(sections)

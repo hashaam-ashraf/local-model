@@ -1,6 +1,6 @@
 # local-model
 
-A shared, self-hosted LLM service. Each project is a config file in `projects/`; the same deployment serves all of them. See `requirements.md` for the scope.
+A shared, self-hosted LLM service. Each project is a config file in `projects/`; the same deployment serves all of them. See `docs/requirements.md` for the scope.
 
 ```
 browser or backend ──► api (FastAPI) ──► ollama   chat model + embedding model
@@ -12,7 +12,7 @@ browser or backend ──► api (FastAPI) ──► ollama   chat model + embed
 ## Run
 
 ```bash
-cp .env.example .env                                   # set ADMIN_TOKEN
+cp env.example .env                                    # set ADMIN_TOKEN
 git clone <kb repo url> kb/tangerpay-kb                # one checkout per knowledge base
 docker compose up -d --build
 docker compose exec ollama ollama pull gemma3:4b       # DEFAULT_MODEL
@@ -55,7 +55,7 @@ To compare with a hosted model, point `LLM_BASE_URL`, `LLM_API_KEY` and `DEFAULT
 ## Tests
 
 ```bash
-docker compose build api && docker compose run --rm test
+docker compose build api && docker compose run --rm --no-deps api pytest
 ```
 
 The tests use a fake model and an in-memory index; they need no Ollama or Qdrant.
@@ -63,17 +63,19 @@ The tests use a fake model and an in-memory index; they need no Ollama or Qdrant
 ## Layout
 
 ```
-local_model/
-  main.py      FastAPI app and endpoints
-  config.py    Settings from .env, projects from projects/*.toml
-  kb.py        markdown pages -> sections split by heading
-  store.py     Qdrant: one collection per project
-  llm.py       chat and embeddings over the OpenAI-compatible API
-  chat.py      prompt building
-  chatlog.py   SQLite log of questions and answers
-  web/         demo chat page
-projects/      one TOML file per project
-kb/            knowledge base checkouts (not in git)
-data/          chat log (not in git)
+app/
+  main.py        App entrypoint: shared clients, CORS, router registration, demo page
+  config.py      Settings from .env, projects from projects/*.toml
+  api/           FastAPI routers (thin)
+  schemas/       Pydantic request/response models
+  services/      Logic: chat, knowledge base, model server, search index, chat log
+  core/          FastAPI dependencies and the admin check
+  constants/     Shared prompt rules and limits
+  web/           Demo chat page
 tests/
+deploy/          Dockerfile
+docs/            requirements.md
+projects/        One TOML file per project
+kb/              Knowledge base checkouts (not in git)
+data/            Chat log (not in git)
 ```
