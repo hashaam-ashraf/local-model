@@ -35,7 +35,7 @@ def env(tmp_path):
         encoding="utf-8",
     )
     (projects / "plain.toml").write_text(
-        'name = "Plain"\nsystem_prompt = "You are a plain assistant."\nmodel = "big-model"\n',
+        'name = "Plain"\nsystem_prompt = "You are a plain assistant."\nmodel = "big-model"\nmodels = ["tiny-model"]\n',
         encoding="utf-8",
     )
     kb = tmp_path / "kb" / "demo-kb"

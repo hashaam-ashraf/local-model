@@ -12,6 +12,11 @@ from app.services.llm_service import LLM
 from app.services.store_service import Store
 
 
+def project_models(settings: Settings, project: Project) -> list[str]:
+    """The models a client may use for this project, the default first."""
+    return list(dict.fromkeys([project.model or settings.default_model, *project.models]))
+
+
 def build_messages(project: Project, sections: list[Section], history: list[dict]) -> list[dict]:
     """Project prompts set the persona; the knowledge base rules are shared."""
     system = project.system_prompt.strip()
@@ -22,8 +27,17 @@ def build_messages(project: Project, sections: list[Section], history: list[dict
 
 
 def stream_answer(
-    settings: Settings, llm: LLM, store: Store, project: Project, history: list[dict]
+    settings: Settings,
+    llm: LLM,
+    store: Store,
+    project: Project,
+    history: list[dict],
+    model: str | None = None,
 ) -> Iterator[str]:
+    models = project_models(settings, project)
+    if model and model not in models:
+        raise HTTPException(400, f"Model must be one of: {', '.join(models)}")
+    model = model or models[0]
     if history[-1]["role"] != "user":
         raise HTTPException(400, "The last message must be from the user")
     question = history[-1]["content"]
@@ -35,7 +49,7 @@ def stream_answer(
 
     def generate():
         parts = []
-        for piece in llm.stream_chat(project.model or settings.default_model, messages):
+        for piece in llm.stream_chat(model, messages):
             parts.append(piece)
             yield piece
         sources = [f"{s.page} | {s.heading}" for s in sections]

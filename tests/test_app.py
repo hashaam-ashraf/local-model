@@ -11,8 +11,8 @@ def ask(client, slug, text):
 def test_lists_projects(env):
     client, _, _ = env
     assert client.get("/v1/projects").json() == [
-        {"slug": "demo", "name": "Demo"},
-        {"slug": "plain", "name": "Plain"},
+        {"slug": "demo", "name": "Demo", "models": ["small-model"]},
+        {"slug": "plain", "name": "Plain", "models": ["big-model", "tiny-model"]},
     ]
 
 
@@ -60,6 +60,22 @@ def test_project_without_kb_skips_retrieval(env):
     assert messages[0] == {"role": "system", "content": "You are a plain assistant."}
     assert llm.embedded == []
     assert client.post("/v1/plain/index", headers=ADMIN).status_code == 400
+
+
+def test_client_can_pick_a_listed_model(env):
+    client, llm, _ = env
+    body = {"messages": [{"role": "user", "content": "Hi"}], "model": "tiny-model"}
+    assert client.post("/v1/plain/chat", json=body).status_code == 200
+    assert llm.chats[0][0] == "tiny-model"
+
+    res = client.post("/v1/demo/chat", json=body)
+    assert res.status_code == 400
+    assert "small-model" in res.json()["detail"]
+    assert client.post("/v1/plain/chat", json={**body, "model": "unknown-model"}).status_code == 422
+    assert len(llm.chats) == 1
+
+    schema = client.get("/openapi.json").json()["components"]["schemas"]["ChatRequest"]
+    assert "'big-model', 'small-model', 'tiny-model'" in str(sorted(schema["properties"]["model"]["anyOf"][0]["enum"]))
 
 
 def test_rejects_bad_requests(env):

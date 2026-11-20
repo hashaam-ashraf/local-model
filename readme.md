@@ -46,6 +46,7 @@ name = "Acme"
 system_prompt = "You are the Acme support assistant."
 kb_path = "acme-kb"        # folder under kb/; leave out for a project with no knowledge base
 model = "gemma3:12b"       # optional, defaults to DEFAULT_MODEL
+models = ["gemma3:1b"]     # optional, other models a client may pick per request
 top_k = 5                  # optional, sections given to the model per question
 allowed_origins = ["https://acme.example"]   # optional, sites allowed to call the api from a browser
 ```
@@ -56,8 +57,8 @@ Then index it: `POST /v1/<slug>/index`.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /v1/projects` | List the configured projects |
-| `POST /v1/<slug>/chat` | Body `{"messages": [{"role": "user", "content": "..."}]}`; the reply streams as plain text |
+| `GET /v1/projects` | List the configured projects and the models each one allows, the default first |
+| `POST /v1/<slug>/chat` | Body `{"messages": [{"role": "user", "content": "..."}]}`, plus an optional `"model"` from the project's list (an unknown name is a 422, another project's model a 400); the reply streams as plain text |
 | `GET /v1/<slug>/files` | List the project's knowledge base pages |
 | `POST /v1/<slug>/files` | Upload one or more markdown pages (multipart field `files`), then rebuild the index. A page with the same name is replaced |
 | `DELETE /v1/<slug>/files/<path>` | Delete a page, then rebuild the index |

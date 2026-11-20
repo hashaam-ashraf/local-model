@@ -93,7 +93,7 @@ app/api/*        Routers — thin. Validate via app/schemas, resolve dependencie
 app/services/*   Logic. Every model, index, file and chat-log call lives here.
 ```
 
-**App wiring** (`app/main.py`): `create_app()` is a factory (Uvicorn runs it with `--factory`). It loads settings and projects, builds one `LLM` and one `Store`, and puts all four on `app.state`. Routers register with the `/v1` prefix; `/health` and the static demo page are mounted at the root. CORS allows the union of every project's `allowed_origins`. There is no module-level `app` or `settings` singleton — that is what lets tests pass in fakes.
+**App wiring** (`app/main.py`): `create_app()` is a factory (Uvicorn runs it with `--factory`). It loads settings and projects, builds one `LLM` and one `Store`, and puts all four on `app.state`. Routers register with the `/v1` prefix; the chat router is built by `create_router(models)`, so the request's `model` field is an enum of every model the project files allow; `/health` and the static demo page are mounted at the root. CORS allows the union of every project's `allowed_origins`. There is no module-level `app` or `settings` singleton — that is what lets tests pass in fakes.
 
 **Dependencies** (`app/core/dependencies.py`): routers reach the shared objects only through `get_settings`, `get_llm`, `get_store`, `get_projects` and `get_project` (resolves the `{slug}` path parameter, 404 for an unknown one). `require_admin` checks `Authorization: Bearer <ADMIN_TOKEN>`; an empty `ADMIN_TOKEN` rejects everyone. Every endpoint that reads or changes a knowledge base is behind it.
 

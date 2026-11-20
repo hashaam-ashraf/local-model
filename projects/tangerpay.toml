@@ -1,5 +1,6 @@
 name = "Tangerpay"
 kb_path = "tangerpay-kb"
+models = ["gemma3:1b", "llama3.2:3b", "qwen2.5:3b", "phi4-mini"]
 system_prompt = """
 You are the Tangerpay support assistant. Be concise, friendly and practical.
 """

@@ -29,6 +29,7 @@ class Project(BaseModel):
     name: str
     system_prompt: str
     model: str | None = None
+    models: list[str] = []  # other models a client may ask for
     kb_path: str | None = None  # folder under kb_root; None means no knowledge base
     top_k: int = 5
     allowed_origins: list[str] = []

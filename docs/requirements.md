@@ -23,8 +23,9 @@ One self-hosted service that gives our projects an LLM without sending data to O
 
 ### Projects
 
-- A project is one TOML file: display name, system prompt, optional model, optional knowledge base folder, number of sections to retrieve, allowed browser origins.
+- A project is one TOML file: display name, system prompt, optional model, optional list of other models a client may choose, optional knowledge base folder, number of sections to retrieve, allowed browser origins.
 - A project without its own model uses the service default.
+- A request may name a model from the project's list; any other model is rejected. Without one, the project's model is used.
 - Each project's knowledge base is indexed into its own collection, so projects never see each other's content.
 
 ### Knowledge base indexing
@@ -46,7 +47,7 @@ One self-hosted service that gives our projects an LLM without sending data to O
 
 ### Demo page
 
-- A plain chat page served by the service, to try any project in a browser.
+- A plain chat page served by the service, to try any project in a browser, with a model picker when the project allows more than one.
 
 ## Non-functional requirements
 
