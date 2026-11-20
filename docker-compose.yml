@@ -10,7 +10,7 @@ services:
     env_file: .env
     volumes:
       - ./projects:/app/projects:ro
-      - ./kb:/app/kb:ro
+      - ./kb:/app/kb
       - ./data:/app/data
     ports:
       - "127.0.0.1:8000:8000"

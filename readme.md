@@ -13,14 +13,27 @@ browser or backend ──► api (FastAPI) ──► ollama   chat model + embed
 
 ```bash
 cp env.example .env                                    # set ADMIN_TOKEN
-git clone <kb repo url> kb/tangerpay-kb                # one checkout per knowledge base
+mkdir -p kb data                                       # so they belong to you, not to root
 docker compose up -d --build
 docker compose exec ollama ollama pull gemma3:4b       # DEFAULT_MODEL
 docker compose exec ollama ollama pull bge-m3          # EMBEDDING_MODEL
+```
+
+Then give the project a knowledge base, in either way:
+
+```bash
+# upload markdown pages; they are indexed straight away
+curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -F "files=@refunds.md" -F "files=@fees.md" http://localhost:8000/v1/tangerpay/files
+
+# or check out a knowledge base repo and index it
+git clone <kb repo url> kb/tangerpay-kb
 curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" http://localhost:8000/v1/tangerpay/index
 ```
 
-Then open http://localhost:8000/?project=tangerpay.
+Then open http://localhost:8000/?project=tangerpay and ask a question. The same endpoints can be tried at http://localhost:8000/docs (use **Authorize** with the admin token).
+
+For a browser console that covers the whole flow — upload, delete, re-index and chat — run the sibling `local-model-frontend` repo (`docker compose up -d --build` there, then http://localhost:8080).
 
 The images and the two models need roughly 8 GB of disk. On a GPU host, uncomment the `deploy` block in `docker-compose.yml` and set `DEFAULT_MODEL` to a larger model.
 
@@ -45,8 +58,13 @@ Then index it: `POST /v1/<slug>/index`.
 |---|---|
 | `GET /v1/projects` | List the configured projects |
 | `POST /v1/<slug>/chat` | Body `{"messages": [{"role": "user", "content": "..."}]}`; the reply streams as plain text |
-| `POST /v1/<slug>/index` | Rebuild the project's search index from its knowledge base; needs `Authorization: Bearer <ADMIN_TOKEN>` |
+| `GET /v1/<slug>/files` | List the project's knowledge base pages |
+| `POST /v1/<slug>/files` | Upload one or more markdown pages (multipart field `files`), then rebuild the index. A page with the same name is replaced |
+| `DELETE /v1/<slug>/files/<path>` | Delete a page, then rebuild the index |
+| `POST /v1/<slug>/index` | Rebuild the project's search index from its knowledge base folder, after changing files on disk |
 | `GET /health` | Liveness check |
+
+The `files` and `index` endpoints need `Authorization: Bearer <ADMIN_TOKEN>`. Uploads must be UTF-8 `.md` files of at most 5 MB each; they are saved in the top level of `kb/<kb_path>/`.
 
 Backend jobs that only need a model can skip the api and use Ollama as an OpenAI-compatible endpoint at `http://127.0.0.1:11434/v1`.
 
@@ -76,6 +94,6 @@ tests/
 deploy/          Dockerfile
 docs/            requirements.md
 projects/        One TOML file per project
-kb/              Knowledge base checkouts (not in git)
+kb/              Knowledge base pages, one folder per project (not in git)
 data/            Chat log (not in git)
 ```

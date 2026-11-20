@@ -9,6 +9,7 @@ from openai import OpenAI
 from qdrant_client import QdrantClient
 
 from app.api.chat import router as chat_router
+from app.api.files import router as files_router
 from app.api.kb import router as kb_router
 from app.api.projects import router as projects_router
 from app.config import Settings, load_projects
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None, llm: LLM | None = None, store: 
     app.include_router(projects_router, prefix=API_V1_PREFIX)
     app.include_router(chat_router, prefix=API_V1_PREFIX)
     app.include_router(kb_router, prefix=API_V1_PREFIX)
+    app.include_router(files_router, prefix=API_V1_PREFIX)
 
     app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True))
     return app

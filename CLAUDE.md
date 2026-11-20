@@ -31,7 +31,7 @@ tests/           pytest suite (harness in tests/conftest.py)
 deploy/          Dockerfile
 docs/            requirements.md — purpose, scope, later work, open questions
 projects/        One TOML file per project
-kb/              Knowledge base checkouts, one folder per project (not in git)
+kb/              Knowledge base pages, one folder per project: checkouts or uploads (not in git)
 data/            Chat log (not in git)
 ```
 
@@ -41,15 +41,18 @@ There is **no local virtualenv** — run everything in Docker. `docker-compose.y
 
 ```bash
 cp env.example .env                                    # set ADMIN_TOKEN
+mkdir -p kb data                                       # otherwise Docker creates them as root and the api cannot write
 docker compose up -d --build                           # api + ollama + qdrant
 docker compose exec ollama ollama pull gemma3:4b       # DEFAULT_MODEL
 docker compose exec ollama ollama pull bge-m3          # EMBEDDING_MODEL
-curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" http://localhost:8000/v1/<slug>/index
+curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" -F "files=@page.md" http://localhost:8000/v1/<slug>/files
 ```
+
+Uploading or deleting a page re-indexes the project. After changing files in `kb/` by hand (a git checkout, an edit), call `POST /v1/<slug>/index`.
 
 The code is copied into the image, not mounted: **rebuild after a code change** (`docker compose up -d --build api`). `projects/`, `kb/` and `data/` are mounted, but project files are read once at startup, so restart the api after editing one.
 
-Demo page at `/?project=<slug>`, Swagger at `/docs`, health check at `/health`.
+Demo page at `/?project=<slug>`, Swagger at `/docs` (the **Authorize** button takes the admin token), health check at `/health`.
 
 ## Tests
 
@@ -59,7 +62,7 @@ docker compose build api && docker compose run --rm --no-deps api pytest
 
 `--no-deps` keeps Ollama and Qdrant from starting; the tests don't need them. The compose file requires `.env` to exist.
 
-Tests build the app with `create_app(settings, llm, store)`, passing a `FakeLLM` and a `Store` over `QdrantClient(":memory:")` (see the `env` fixture in `tests/test_app.py`). `tests/conftest.py` blocks every socket connection, so a test that reaches a real model server or index fails.
+Tests build the app with `create_app(settings, llm, store)`, passing a `FakeLLM` and a `Store` over `QdrantClient(":memory:")` (the `env` fixture in `tests/conftest.py`). `tests/conftest.py` blocks every socket connection, so a test that reaches a real model server or index fails.
 
 When writing tests:
 - Inject fakes through `create_app`; never loosen the network guard to make a test pass.
@@ -92,12 +95,13 @@ app/services/*   Logic. Every model, index, file and chat-log call lives here.
 
 **App wiring** (`app/main.py`): `create_app()` is a factory (Uvicorn runs it with `--factory`). It loads settings and projects, builds one `LLM` and one `Store`, and puts all four on `app.state`. Routers register with the `/v1` prefix; `/health` and the static demo page are mounted at the root. CORS allows the union of every project's `allowed_origins`. There is no module-level `app` or `settings` singleton — that is what lets tests pass in fakes.
 
-**Dependencies** (`app/core/dependencies.py`): routers reach the shared objects only through `get_settings`, `get_llm`, `get_store`, `get_projects` and `get_project` (resolves the `{slug}` path parameter, 404 for an unknown one). `require_admin` checks `Authorization: Bearer <ADMIN_TOKEN>`; an empty `ADMIN_TOKEN` rejects everyone.
+**Dependencies** (`app/core/dependencies.py`): routers reach the shared objects only through `get_settings`, `get_llm`, `get_store`, `get_projects` and `get_project` (resolves the `{slug}` path parameter, 404 for an unknown one). `require_admin` checks `Authorization: Bearer <ADMIN_TOKEN>`; an empty `ADMIN_TOKEN` rejects everyone. Every endpoint that reads or changes a knowledge base is behind it.
 
 **Config** (`app/config.py`): `Settings` is a Pydantic model whose fields are read from the upper-cased environment variable of the same name (`Settings.from_env()`). `Project` is the shape of a `projects/<slug>.toml` file; the slug is the file name. Add new env vars here and to `env.example`; add new project options to `Project` and to the example in `readme.md`.
 
 **Services** (`app/services/`):
-- `kb_service` — splits markdown pages into `Section`s by heading (the heading trail is kept, fenced code is not parsed for headings, hidden folders are skipped) and rebuilds a project's index.
+- `kb_service` — splits markdown pages into `Section`s by heading (the heading trail is kept, fenced code is not parsed for headings, hidden folders are skipped) and rebuilds a project's index. `list_pages` decides which files count as pages; listing, indexing and deleting all go through it.
+- `file_service` — lists, saves and deletes pages in `kb/<kb_path>/`. Uploads are validated as a batch before any is written (`.md`, UTF-8, at most `MAX_UPLOAD_MB`), and only the file name of an upload is used, so nothing can be written outside the folder. A delete must match a listed page.
 - `store_service` — `Store`, the only code that talks to Qdrant. One collection per project, named by slug; `replace` drops and rebuilds it.
 - `llm_service` — `LLM`, the only code that talks to the model server: `embed` and `stream_chat`.
 - `chat_service` — finds the sections closest to the latest question, builds the messages and streams the reply, saving it to the chat log once the stream ends.
@@ -114,7 +118,8 @@ app/services/*   Logic. Every model, index, file and chat-log call lives here.
 ## Conventions
 
 - **New endpoint** = router in `app/api/` (registered in `app/main.py`) + Pydantic schemas in `app/schemas/` + logic in an `app/services/` function. No model, index or file access in routers.
-- **Routes** declare a `response_model` (streaming routes excepted).
+- **Routes** declare a `response_model` (streaming routes excepted), and an explicit `status_code` when it isn't `200` (`201` on upload, `204` on delete).
+- **Anything that changes a knowledge base re-indexes it** in the same request, so the files on disk and the index never disagree after an API call.
 - **Adding a project must not need a code change.** Per-project behaviour belongs in the TOML file; if a project needs something new, make it an option on `Project`, not a branch on the slug.
 - **Model calls stay on the OpenAI-compatible API** through `LLM`. Don't use Ollama-only endpoints or import a provider SDK elsewhere.
 - **Settings and secrets** come from `app/config.py`; never hardcode what belongs in `.env`.

@@ -2,7 +2,8 @@
 
 import secrets
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Project, Settings
 from app.services.llm_service import LLM
@@ -32,8 +33,13 @@ def get_project(slug: str, request: Request) -> Project:
     return projects[slug]
 
 
-def require_admin(request: Request, authorization: str = Header("")) -> None:
+admin_bearer = HTTPBearer(auto_error=False, description="ADMIN_TOKEN from .env")
+
+
+def require_admin(
+    request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(admin_bearer)
+) -> None:
     token = request.app.state.settings.admin_token
-    expected = f"Bearer {token}"
-    if not token or not secrets.compare_digest(authorization.encode(), expected.encode()):
+    given = credentials.credentials if credentials else ""
+    if not token or not secrets.compare_digest(given.encode(), token.encode()):
         raise HTTPException(401, "Admin token required")

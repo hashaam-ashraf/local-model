@@ -49,19 +49,31 @@ def split_page(page: str, text: str) -> list[Section]:
     return sections
 
 
+def kb_folder(settings: Settings, project: Project) -> Path:
+    if not project.kb_path:
+        raise HTTPException(400, f"Project {project.slug} has no knowledge base")
+    return settings.kb_root / project.kb_path
+
+
+def list_pages(root: Path) -> dict[str, Path]:
+    """Markdown pages under root, keyed by their path relative to it. Hidden folders and files are skipped."""
+    pages = {}
+    if root.is_dir():
+        for path in sorted(root.rglob("*.md")):
+            rel = path.relative_to(root)
+            if path.is_file() and not any(part.startswith(".") for part in rel.parts):
+                pages[rel.as_posix()] = path
+    return pages
+
+
 def load_sections(root: Path) -> list[Section]:
     sections = []
-    for path in sorted(root.rglob("*.md")):
-        rel = path.relative_to(root)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        sections += split_page(rel.as_posix(), path.read_text(encoding="utf-8"))
+    for page, path in list_pages(root).items():
+        sections += split_page(page, path.read_text(encoding="utf-8"))
     return sections
 
 
 def rebuild_index(settings: Settings, llm, store, project: Project) -> int:
-    if not project.kb_path:
-        raise HTTPException(400, f"Project {project.slug} has no knowledge base")
-    sections = load_sections(settings.kb_root / project.kb_path)
+    sections = load_sections(kb_folder(settings, project))
     store.replace(project.slug, sections, llm.embed([s.content for s in sections]))
     return len(sections)
