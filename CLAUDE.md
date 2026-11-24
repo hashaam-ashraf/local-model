@@ -48,7 +48,7 @@ docker compose exec ollama ollama pull bge-m3          # EMBEDDING_MODEL
 curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" -F "files=@page.md" http://localhost:8000/v1/<slug>/files
 ```
 
-Uploading or deleting a page re-indexes the project. After changing files in `kb/` by hand (a git checkout, an edit), call `POST /v1/<slug>/index`.
+Uploading or deleting a page indexes just that page. After changing files in `kb/` by hand (a git checkout, an edit), call `POST /v1/<slug>/index`.
 
 The code is copied into the image, not mounted: **rebuild after a code change** (`docker compose up -d --build api`). `projects/`, `kb/` and `data/` are mounted, but project files are read once at startup, so restart the api after editing one.
 
@@ -100,9 +100,9 @@ app/services/*   Logic. Every model, index, file and chat-log call lives here.
 **Config** (`app/config.py`): `Settings` is a Pydantic model whose fields are read from the upper-cased environment variable of the same name (`Settings.from_env()`). `Project` is the shape of a `projects/<slug>.toml` file; the slug is the file name. Add new env vars here and to `env.example`; add new project options to `Project` and to the example in `readme.md`.
 
 **Services** (`app/services/`):
-- `kb_service` — splits markdown pages into `Section`s by heading (the heading trail is kept, fenced code is not parsed for headings, hidden folders are skipped) and rebuilds a project's index. `list_pages` decides which files count as pages; listing, indexing and deleting all go through it.
+- `kb_service` — splits markdown pages into `Section`s by heading (the heading trail is kept, fenced code is not parsed for headings, hidden folders are skipped) and indexes them: `rebuild_index` for a whole project, `index_pages` for the pages an upload or delete touched. `list_pages` decides which files count as pages; listing, indexing and deleting all go through it.
 - `file_service` — lists, saves and deletes pages in `kb/<kb_path>/`. Uploads are validated as a batch before any is written (`.md`, UTF-8, at most `MAX_UPLOAD_MB`), and only the file name of an upload is used, so nothing can be written outside the folder. A delete must match a listed page.
-- `store_service` — `Store`, the only code that talks to Qdrant. One collection per project, named by slug; `replace` drops and rebuilds it.
+- `store_service` — `Store`, the only code that talks to Qdrant. One collection per project, named by slug; `reset` drops it, `add` and `remove` change it a page at a time.
 - `llm_service` — `LLM`, the only code that talks to the model server: `embed` and `stream_chat`.
 - `chat_service` — finds the sections closest to the latest question, builds the messages and streams the reply, saving it to the chat log once the stream ends.
 - `chatlog_service` — appends a row to SQLite.
@@ -119,7 +119,7 @@ app/services/*   Logic. Every model, index, file and chat-log call lives here.
 
 - **New endpoint** = router in `app/api/` (registered in `app/main.py`) + Pydantic schemas in `app/schemas/` + logic in an `app/services/` function. No model, index or file access in routers.
 - **Routes** declare a `response_model` (streaming routes excepted), and an explicit `status_code` when it isn't `200` (`201` on upload, `204` on delete).
-- **Anything that changes a knowledge base re-indexes it** in the same request, so the files on disk and the index never disagree after an API call.
+- **Anything that changes a knowledge base re-indexes the pages it changed** in the same request, so the files on disk and the index never disagree after an API call.
 - **Adding a project must not need a code change.** Per-project behaviour belongs in the TOML file; if a project needs something new, make it an option on `Project`, not a branch on the slug.
 - **Model calls stay on the OpenAI-compatible API** through `LLM`. Don't use Ollama-only endpoints or import a provider SDK elsewhere.
 - **Settings and secrets** come from `app/config.py`; never hardcode what belongs in `.env`.

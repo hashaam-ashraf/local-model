@@ -1,0 +1,11 @@
+name = "Open docs (large knowledge base test)"
+kb_path = "opendocs"
+top_k = 3
+models = [
+    "gemma3:1b", "llama3.2:3b", "qwen2.5:3b", "phi4-mini",
+    "llama3.2:1b", "qwen2.5:1.5b", "qwen2.5:0.5b", "smollm2:1.7b", "granite3.3:2b",
+    "deepseek-r1:1.5b", "qwen3:4b",
+]
+system_prompt = """
+You are a documentation assistant. Be concise and practical.
+"""

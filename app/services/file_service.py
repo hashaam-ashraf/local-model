@@ -9,9 +9,11 @@ from app.services.kb_service import kb_folder, list_pages
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 
-def list_files(settings: Settings, project: Project) -> list[dict]:
-    pages = list_pages(kb_folder(settings, project))
-    return [{"path": page, "size": path.stat().st_size} for page, path in pages.items()]
+def list_files(settings: Settings, project: Project, page: int, page_size: int) -> dict:
+    pages = list(list_pages(kb_folder(settings, project)).items())
+    shown = pages[(page - 1) * page_size : page * page_size]
+    files = [{"path": name, "size": path.stat().st_size} for name, path in shown]
+    return {"total": len(pages), "page": page, "page_size": page_size, "files": files}
 
 
 def save_files(settings: Settings, project: Project, uploads: list[tuple[str, bytes]]) -> list[str]:

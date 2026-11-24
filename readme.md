@@ -19,6 +19,12 @@ docker compose exec ollama ollama pull gemma3:4b       # DEFAULT_MODEL
 docker compose exec ollama ollama pull bge-m3          # EMBEDDING_MODEL
 ```
 
+On a CPU-only host Ollama may use only a couple of threads. Setting the thread count on a model, under the same name, roughly doubles its speed; repeat it after each `ollama pull` of that model:
+
+```bash
+docker compose exec ollama sh -c 'printf "FROM gemma3:4b\nPARAMETER num_thread 10\n" > /tmp/Modelfile && ollama create gemma3:4b -f /tmp/Modelfile'
+```
+
 Then give the project a knowledge base, in either way:
 
 ```bash
@@ -59,9 +65,9 @@ Then index it: `POST /v1/<slug>/index`.
 |---|---|
 | `GET /v1/projects` | List the configured projects and the models each one allows, the default first |
 | `POST /v1/<slug>/chat` | Body `{"messages": [{"role": "user", "content": "..."}]}`, plus an optional `"model"` from the project's list (an unknown name is a 422, another project's model a 400); the reply streams as plain text |
-| `GET /v1/<slug>/files` | List the project's knowledge base pages |
-| `POST /v1/<slug>/files` | Upload one or more markdown pages (multipart field `files`), then rebuild the index. A page with the same name is replaced |
-| `DELETE /v1/<slug>/files/<path>` | Delete a page, then rebuild the index |
+| `GET /v1/<slug>/files` | List the project's knowledge base pages, 50 at a time: `?page=2&page_size=50` (at most 200). The reply holds `total`, `page`, `page_size` and `files` |
+| `POST /v1/<slug>/files` | Upload one or more markdown pages (multipart field `files`) and index them. A page with the same name is replaced; `sections` in the reply counts the sections of the uploaded pages |
+| `DELETE /v1/<slug>/files/<path>` | Delete a page and remove it from the index |
 | `POST /v1/<slug>/index` | Rebuild the project's search index from its knowledge base folder, after changing files on disk |
 | `GET /health` | Liveness check |
 

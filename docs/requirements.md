@@ -31,10 +31,10 @@ One self-hosted service that gives our projects an LLM without sending data to O
 ### Knowledge base indexing
 
 - Read the markdown pages of a project's knowledge base from a folder on the server. The folder is filled by checking out a repo or by uploading pages.
-- List, upload and delete pages through endpoints protected by an admin token. An upload or a delete rebuilds the index, so the next question already uses it.
+- List, upload and delete pages through endpoints protected by an admin token. An upload or a delete updates the index for those pages only, so the next question already uses it.
 - Split each page by heading; one section is one searchable unit.
 - Convert each section to a vector with the embedding model and store it in the search index.
-- Indexing can also be triggered on its own, through an endpoint protected by the same admin token.
+- A full rebuild of a project's index can be triggered on its own, through an endpoint protected by the same admin token. It is needed after changing files on disk by hand.
 - Indexing and questions must use the same embedding model. Changing the model means re-indexing every project.
 
 ### Chat
@@ -60,7 +60,7 @@ One self-hosted service that gives our projects an LLM without sending data to O
 
 - Project config files, with Tangerpay as the first.
 - Endpoints to list, upload and delete knowledge base pages.
-- Indexing endpoint (full rebuild of a project's index each time).
+- Indexing endpoint (full rebuild of a project's index); uploads and deletes index only the pages they touch.
 - Streaming chat endpoint with retrieval.
 - Chat log in SQLite.
 - Demo chat page.
@@ -68,7 +68,7 @@ One self-hosted service that gives our projects an LLM without sending data to O
 
 ## Later
 
-- Pull a knowledge base repo automatically after each merge, and re-index only the changed pages.
+- Pull a knowledge base repo automatically after each merge, and re-index only the pages it changed.
 - Hybrid search (keywords plus vectors), for exact terms such as product names and error codes.
 - An embeddable widget for customer sites, with rate limiting.
 - Handoff to a person (ticket or live agent).

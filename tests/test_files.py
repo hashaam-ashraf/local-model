@@ -24,7 +24,28 @@ def test_files_require_admin_token(env):
 
 def test_list_files(env):
     client, _, _ = env
-    assert client.get("/v1/demo/files", headers=ADMIN).json() == [{"path": "money.md", "size": 65}]
+    assert client.get("/v1/demo/files", headers=ADMIN).json() == {
+        "total": 1,
+        "page": 1,
+        "page_size": 50,
+        "files": [{"path": "money.md", "size": 65}],
+    }
+
+
+def test_list_files_in_pages(env):
+    client, _, settings = env
+    for name in ["a.md", "b.md", "c.md"]:
+        (settings.kb_root / "demo-kb" / name).write_text("# A\n\nText.", encoding="utf-8")
+
+    def listed(query):
+        body = client.get(f"/v1/demo/files?{query}", headers=ADMIN).json()
+        return body["total"], [f["path"] for f in body["files"]]
+
+    assert listed("page_size=3") == (4, ["a.md", "b.md", "c.md"])
+    assert listed("page=2&page_size=3") == (4, ["money.md"])
+    assert listed("page=3&page_size=3") == (4, [])
+    assert client.get("/v1/demo/files?page=0", headers=ADMIN).status_code == 422
+    assert client.get("/v1/demo/files?page_size=201", headers=ADMIN).status_code == 422
 
 
 def test_upload_saves_the_page_and_indexes_it(env):
@@ -33,9 +54,10 @@ def test_upload_saves_the_page_and_indexes_it(env):
     res = upload(client, "demo", ("cards.md", b"# Cards\n\nA card arrives in 3 days.\n"))
 
     assert res.status_code == 201
-    assert res.json() == {"project": "demo", "files": ["cards.md"], "sections": 3}
+    assert res.json() == {"project": "demo", "files": ["cards.md"], "sections": 1}
+    assert llm.embedded == ["Cards\nA card arrives in 3 days."]
     assert (settings.kb_root / "demo-kb" / "cards.md").read_text() == "# Cards\n\nA card arrives in 3 days.\n"
-    assert [f["path"] for f in client.get("/v1/demo/files", headers=ADMIN).json()] == ["cards.md", "money.md"]
+    assert [f["path"] for f in client.get("/v1/demo/files", headers=ADMIN).json()["files"]] == ["cards.md", "money.md"]
 
     ask(client, "When does my card arrive?")
     assert "A card arrives in 3 days." in llm.chats[0][1][0]["content"]
@@ -43,6 +65,7 @@ def test_upload_saves_the_page_and_indexes_it(env):
 
 def test_upload_replaces_a_page_with_the_same_name(env):
     client, llm, _ = env
+    client.post("/v1/demo/index", headers=ADMIN)
 
     res = upload(client, "demo", ("money.md", b"# Refunds\n\nA refund takes 2 days.\n"))
 
@@ -59,7 +82,7 @@ def test_upload_creates_the_knowledge_base_folder(env):
         'name = "Fresh"\nsystem_prompt = "Hi."\nkb_path = "fresh-kb"\n', encoding="utf-8"
     )
     client = TestClient(create_app(settings, client.app.state.llm, client.app.state.store))
-    assert client.get("/v1/fresh/files", headers=ADMIN).json() == []
+    assert client.get("/v1/fresh/files", headers=ADMIN).json()["files"] == []
     assert upload(client, "fresh", ("a.md", b"# A\n\nText.")).status_code == 201
     assert (settings.kb_root / "fresh-kb" / "a.md").exists()
 
@@ -90,12 +113,18 @@ def test_delete_removes_the_page_from_disk_and_from_answers(env):
     client, llm, settings = env
     client.post("/v1/demo/index", headers=ADMIN)
 
+    upload(client, "demo", ("cards.md", b"# Cards\n\nA card arrives in 3 days.\n"))
+    embedded = len(llm.embedded)
+
     assert client.delete("/v1/demo/files/money.md", headers=ADMIN).status_code == 204
 
     assert not (settings.kb_root / "demo-kb" / "money.md").exists()
-    assert client.get("/v1/demo/files", headers=ADMIN).json() == []
+    assert [f["path"] for f in client.get("/v1/demo/files", headers=ADMIN).json()["files"]] == ["cards.md"]
+    assert len(llm.embedded) == embedded
     ask(client, "How long does a refund take?")
-    assert "(no section matched this question)" in llm.chats[0][1][0]["content"]
+    system = llm.chats[0][1][0]["content"]
+    assert "A card arrives in 3 days." in system
+    assert "A refund takes 5 days." not in system
 
 
 def test_delete_handles_pages_in_subfolders(env):

@@ -6,6 +6,13 @@ class FileResponse(BaseModel):
     size: int
 
 
+class FileListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    files: list[FileResponse]
+
+
 class UploadResponse(BaseModel):
     project: str
     files: list[str]

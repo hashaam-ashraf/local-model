@@ -73,7 +73,21 @@ def load_sections(root: Path) -> list[Section]:
     return sections
 
 
-def rebuild_index(settings: Settings, llm, store, project: Project) -> int:
-    sections = load_sections(kb_folder(settings, project))
-    store.replace(project.slug, sections, llm.embed([s.content for s in sections]))
+def _index_page(llm, store, project: Project, page: str, path: Path) -> int:
+    sections = split_page(page, path.read_text(encoding="utf-8"))
+    store.add(project.slug, sections, llm.embed([s.content for s in sections]))
     return len(sections)
+
+
+def rebuild_index(settings: Settings, llm, store, project: Project) -> int:
+    """Index every page from scratch, one page at a time so a large knowledge base never sits in memory."""
+    pages = list_pages(kb_folder(settings, project))
+    store.reset(project.slug)
+    return sum(_index_page(llm, store, project, page, path) for page, path in pages.items())
+
+
+def index_pages(settings: Settings, llm, store, project: Project, pages: list[str]) -> int:
+    """Bring the index in line with the named pages only: uploaded, replaced or deleted."""
+    on_disk = list_pages(kb_folder(settings, project))
+    store.remove(project.slug, pages)
+    return sum(_index_page(llm, store, project, page, on_disk[page]) for page in pages if page in on_disk)
