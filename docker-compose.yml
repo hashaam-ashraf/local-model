@@ -9,12 +9,16 @@ services:
     image: local-model-api
     env_file: .env
     volumes:
-      - ./projects:/app/projects:ro
       - ./kb:/app/kb
-      - ./data:/app/data
     ports:
       - "127.0.0.1:8000:8000"
-    depends_on: [ollama, qdrant]
+    depends_on:
+      ollama:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   ollama:
     image: ollama/ollama
@@ -36,6 +40,22 @@ services:
     volumes:
       - qdrant:/qdrant/storage
 
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: local_model
+      POSTGRES_PASSWORD: local_model
+      POSTGRES_DB: local_model
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5436:5432"  # for pgAdmin and other tools on this host
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U local_model"]
+      interval: 5s
+      retries: 10
+
 volumes:
   ollama:
   qdrant:
+  postgres:

@@ -4,9 +4,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app.config import Project, Settings
+from app.config import Settings
+from app.models import File, file_tags
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*)")
 
@@ -49,12 +51,6 @@ def split_page(page: str, text: str) -> list[Section]:
     return sections
 
 
-def kb_folder(settings: Settings, project: Project) -> Path:
-    if not project.kb_path:
-        raise HTTPException(400, f"Project {project.slug} has no knowledge base")
-    return settings.kb_root / project.kb_path
-
-
 def list_pages(root: Path) -> dict[str, Path]:
     """Markdown pages under root, keyed by their path relative to it. Hidden folders and files are skipped."""
     pages = {}
@@ -66,28 +62,34 @@ def list_pages(root: Path) -> dict[str, Path]:
     return pages
 
 
-def load_sections(root: Path) -> list[Section]:
-    sections = []
-    for page, path in list_pages(root).items():
-        sections += split_page(page, path.read_text(encoding="utf-8"))
-    return sections
+def page_tags(db: Session, pages: list[str] | None = None) -> dict[str, list[str]]:
+    """Tag ids by page, as the index stores them. A page without tags is left out."""
+    query = select(File.path, file_tags.c.tag_id).join(file_tags, file_tags.c.file_id == File.id)
+    if pages is not None:
+        query = query.where(File.path.in_(pages))
+    tags: dict[str, list[str]] = {}
+    for path, tag_id in db.execute(query):
+        tags.setdefault(path, []).append(str(tag_id))
+    return tags
 
 
-def _index_page(llm, store, project: Project, page: str, path: Path) -> int:
+def _index_page(llm, store, page: str, path: Path, tags: list[str]) -> int:
     sections = split_page(page, path.read_text(encoding="utf-8"))
-    store.add(project.slug, sections, llm.embed([s.content for s in sections]))
+    store.add(sections, llm.embed([s.content for s in sections]), tags)
     return len(sections)
 
 
-def rebuild_index(settings: Settings, llm, store, project: Project) -> int:
+def rebuild_index(settings: Settings, db: Session, llm, store) -> int:
     """Index every page from scratch, one page at a time so a large knowledge base never sits in memory."""
-    pages = list_pages(kb_folder(settings, project))
-    store.reset(project.slug)
-    return sum(_index_page(llm, store, project, page, path) for page, path in pages.items())
+    pages = list_pages(settings.kb_root)
+    tags = page_tags(db)
+    store.reset()
+    return sum(_index_page(llm, store, page, path, tags.get(page, [])) for page, path in pages.items())
 
 
-def index_pages(settings: Settings, llm, store, project: Project, pages: list[str]) -> int:
+def index_pages(settings: Settings, db: Session, llm, store, pages: list[str]) -> int:
     """Bring the index in line with the named pages only: uploaded, replaced or deleted."""
-    on_disk = list_pages(kb_folder(settings, project))
-    store.remove(project.slug, pages)
-    return sum(_index_page(llm, store, project, page, on_disk[page]) for page in pages if page in on_disk)
+    on_disk = list_pages(settings.kb_root)
+    tags = page_tags(db, pages)
+    store.remove(pages)
+    return sum(_index_page(llm, store, page, on_disk[page], tags.get(page, [])) for page in pages if page in on_disk)
