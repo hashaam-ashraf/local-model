@@ -1,4 +1,4 @@
-"""A user's answers come only from files that share one of their tags."""
+"""A user's answers come from untagged files and from files that share one of their tags."""
 
 from app.services import file_service
 
@@ -24,13 +24,24 @@ def given(client, llm, headers, text, **extra):
     return llm.chats[-1][1][0]["content"]
 
 
-def test_untagged_files_are_for_admins_only(env, as_user, reindex):
+def test_untagged_files_are_for_everyone(env, as_user, reindex):
     client, llm, _ = env
     reindex()
 
+    for headers in [client.headers, as_user("u@example.com", "billing"), as_user("none@example.com")]:
+        assert "A refund takes 5 days." in given(client, llm, headers, REFUND)
+
+
+def test_user_without_the_tag_gets_nothing_from_a_tagged_file(env, as_user, reindex):
+    client, llm, _ = env
+    other, none = as_user("o@example.com", "other"), as_user("none@example.com")
+    client.post("/v1/tags", json={"name": "billing"})
+    client.put("/v1/files/money.md", json={"tags": [tag_id(client, "billing")]})
+    reindex()
+
     assert "A refund takes 5 days." in given(client, llm, client.headers, REFUND)
-    assert "(no section matched this question)" in given(client, llm, as_user("u@example.com", "billing"), REFUND)
-    assert "(no section matched this question)" in given(client, llm, as_user("none@example.com"), REFUND)
+    for headers in [other, none]:
+        assert "(no section matched this question)" in given(client, llm, headers, REFUND)
 
 
 def test_user_gets_only_files_with_one_of_their_tags(env, as_user, reindex):
@@ -59,8 +70,12 @@ def test_changing_file_tags_applies_to_the_next_question_without_embedding(env, 
     assert len(llm.embedded) == embedded
     assert "A refund takes 5 days." in given(client, llm, user, REFUND)
 
-    client.put("/v1/files/money.md", json={"tags": []})
+    client.post("/v1/tags", json={"name": "other"})
+    client.put("/v1/files/money.md", json={"tags": [tag_id(client, "other")]})
     assert "A refund takes 5 days." not in given(client, llm, user, REFUND)
+
+    client.put("/v1/files/money.md", json={"tags": []})
+    assert "A refund takes 5 days." in given(client, llm, user, REFUND)
 
     assert client.put("/v1/files/missing.md", json={"tags": []}).status_code == 404
     unknown = "00000000-0000-0000-0000-000000000000"
@@ -78,8 +93,25 @@ def test_changing_user_tags_applies_to_the_next_question(env, as_user, reindex):
     client.patch(f"/v1/users/{user_id}", json={"tags": []})
     assert "A refund takes 5 days." not in given(client, llm, user, REFUND)
 
-    client.patch(f"/v1/users/{user_id}", json={"tags": [tag_id(client, "billing")]})
-    client.delete(f"/v1/tags/{tag_id(client, 'billing')}")
+
+
+def test_tag_on_a_file_cannot_be_deleted(env, as_user, reindex):
+    """Deleting it would leave the file untagged, and so open to every user."""
+    client, llm, _ = env
+    user = as_user("u@example.com", "other")
+    client.post("/v1/tags", json={"name": "billing"})
+    billing = tag_id(client, "billing")
+    client.put("/v1/files/money.md", json={"tags": [billing]})
+    reindex()
+
+    res = client.delete(f"/v1/tags/{billing}")
+    assert res.status_code == 409
+    assert "still on 1 file" in res.json()["detail"]
+    assert "A refund takes 5 days." not in given(client, llm, user, REFUND)
+
+    client.post("/v1/tags", json={"name": "internal"})
+    client.put("/v1/files/money.md", json={"tags": [tag_id(client, "internal")]})
+    assert client.delete(f"/v1/tags/{billing}").status_code == 204
     assert "A refund takes 5 days." not in given(client, llm, user, REFUND)
 
 
@@ -91,7 +123,11 @@ def test_requested_tags_narrow_the_search_but_never_widen_it(env, as_user, reind
     client.put("/v1/files/money.md", json={"tags": [billing]})
     reindex()
     upload(client, CARDS, "cards")
+    upload(client, ("limits.md", b"# Limits\n\nThe daily limit is 500.\n"))
 
+    # Without named tags the untagged page is searched too; naming tags leaves it out.
+    assert "The daily limit is 500." in given(client, llm, user, "What is the limit?")
+    assert "The daily limit is 500." not in given(client, llm, user, "What is the limit?", tags=[billing])
     assert "A refund takes 5 days." in given(client, llm, user, REFUND, tags=[billing])
     assert "(no section matched this question)" in given(client, llm, user, REFUND, tags=[cards])
     assert "A card arrives in 3 days." in given(client, llm, client.headers, REFUND, tags=[cards])
@@ -99,17 +135,21 @@ def test_requested_tags_narrow_the_search_but_never_widen_it(env, as_user, reind
 
 def test_upload_and_rebuild_keep_tags(env, as_user, reindex):
     client, llm, _ = env
-    user = as_user("u@example.com", "cards")
+    user, other = as_user("u@example.com", "cards"), as_user("o@example.com", "other")
+    question = "When does my card arrive?"
     assert upload(client, CARDS, "cards").status_code == 201
-    assert "A card arrives in 3 days." in given(client, llm, user, "When does my card arrive?")
+    assert "A card arrives in 3 days." in given(client, llm, user, question)
+    assert "A card arrives in 3 days." not in given(client, llm, other, question)
 
     reindex()
-    assert "A card arrives in 3 days." in given(client, llm, user, "When does my card arrive?")
+    assert "A card arrives in 3 days." in given(client, llm, user, question)
+    assert "A card arrives in 3 days." not in given(client, llm, other, question)
 
-    # Uploading again without tags replaces them; deleting forgets them.
+    # Uploading again without tags replaces them, which opens the page to everyone; deleting forgets them.
     upload(client, CARDS)
-    assert "A card arrives in 3 days." not in given(client, llm, user, "When does my card arrive?")
+    assert "A card arrives in 3 days." in given(client, llm, other, question)
     upload(client, CARDS, "cards")
+    assert "A card arrives in 3 days." not in given(client, llm, other, question)
     client.delete("/v1/files/cards.md")
     upload(client, CARDS)
     assert client.get("/v1/files").json()["files"][0] == {"path": "cards.md", "size": 35, "tags": []}
@@ -135,3 +175,4 @@ def test_import_adds_existing_pages_without_embedding(env, as_user, reindex):
     tags = client.get("/v1/files").json()["files"][0]["tags"]
     assert sorted(tag["name"] for tag in tags) == ["billing", "docs"]
     assert "A refund takes 5 days." in given(client, llm, user, REFUND)
+    assert "A refund takes 5 days." not in given(client, llm, as_user("o@example.com", "other"), REFUND)

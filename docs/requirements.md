@@ -40,7 +40,8 @@ One self-hosted assistant that answers from our own documents without sending da
 - Everyone logs in with an email and password and gets a token; only login and the health check work without one.
 - Two roles: an admin can do everything, a user can only chat. Admins create, change and delete users. The first admin is created when the service starts, from an email and password in the environment.
 - A tag is a label with a name and an optional description. A file can have several tags, and so can a user.
-- A user's answers come only from files that share at least one tag with them. A file without tags is used only for admins, who are not limited by tags.
+- A file without tags is open to every user. A file with tags is used only for users who hold at least one of them, and for admins, who are not limited by tags.
+- A tag cannot be deleted while a file still has it, since that would open the file to everyone.
 - A change to a user's tags or a file's tags applies from the next question. Changing a file's tags does not index it again.
 - Pages already on disk are added to the database by a script, not by indexing them again.
 - The lists of users, tags and files are returned a page at a time.

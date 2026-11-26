@@ -13,6 +13,6 @@ class User(AbstractModel):
     hashed_password = Column(Text, nullable=False)
     role = Column(String(50), nullable=False)
 
-    # A user's answers come only from files that share one of these tags; admins are not limited.
+    # A user's answers come from untagged files and files that share one of these tags; admins are not limited.
     tags = relationship("Tag", secondary=user_tags, lazy="selectin")
     conversations = relationship("Conversation", cascade="all, delete-orphan")

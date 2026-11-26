@@ -1,6 +1,6 @@
 # local-model
 
-A self-hosted LLM assistant that answers from a markdown knowledge base. Users log in, and each one gets answers only from the files that share a tag with them. See `docs/requirements.md` for the scope.
+A self-hosted LLM assistant that answers from a markdown knowledge base. Users log in, and each one gets answers from the untagged files and the files that share a tag with them. See `docs/requirements.md` for the scope.
 
 ```
 browser or backend ──► api (FastAPI) ──► ollama   chat model + embedding model
@@ -63,7 +63,7 @@ All in `.env` (see `env.example`); restart the api after a change.
 
 ## Users and tags
 
-There are two roles. An **admin** can do everything. A **user** can only hold conversations, sees only their own, and gets answers only from files that share a tag with them: a file with no tags, or a user with no tags, matches nothing. Admins are not limited by tags.
+There are two roles. An **admin** can do everything. A **user** can only hold conversations, sees only their own, and gets answers from files that have no tags and from files that share a tag with them. A tag on a file therefore restricts it: only users holding one of its tags (and admins) get answers from it. A user with no tags still gets the untagged files. Admins are not limited by tags.
 
 Create tags with `POST /v1/tags`, give them to a user when creating or updating the user, and to a file when uploading it or with `PUT /v1/files/<path>`. A change applies from the next question; changing a file's tags relabels its sections in the index without indexing it again.
 
@@ -75,7 +75,7 @@ Pages that are in `KB_ROOT` but not in the database (indexed before tags existed
 docker compose exec api python -m scripts.import_files --tag docs   # --tag is optional and repeatable
 ```
 
-Only the pages it adds get the tags. It then copies the tags in the database onto the index, so it is also the repair if the two ever disagree, and it is safe to repeat.
+Only the pages it adds get the tags; without `--tag` they stay untagged, which makes them open to every user. It then copies the tags in the database onto the index, so it is also the repair if the two ever disagree, and it is safe to repeat.
 
 Pages whose text was edited on disk, or a changed `EMBEDDING_MODEL`, need the index rebuilt. This embeds every page again and takes hours for a large knowledge base:
 
@@ -97,7 +97,7 @@ docker compose exec api python -m scripts.reindex
 | `PATCH /v1/conversations/<id>`, `DELETE /v1/conversations/<id>` | Rename a conversation (body `{"title": "..."}`); delete it with its messages |
 | `GET /v1/users`, `POST /v1/users` | Admin. List users; create one from `email`, `name`, `password` (8 to 72 characters), `role` (`user` by default, or `admin`) and `tags` (tag ids) |
 | `PATCH /v1/users/<id>`, `DELETE /v1/users/<id>` | Admin. Change a user's `name`, `password`, `role` or `tags` (only the fields sent); delete a user |
-| `GET /v1/tags`, `POST /v1/tags`, `DELETE /v1/tags/<id>` | Admin. List tags, create one from a `name` and an optional `description`, delete one (it is taken off every user and file) |
+| `GET /v1/tags`, `POST /v1/tags`, `DELETE /v1/tags/<id>` | Admin. List tags, create one from a `name` and an optional `description`, delete one (it is taken off every user; refused with a 409 while a file still has it, because an untagged file is open to every user) |
 | `GET /v1/files` | Admin. List the knowledge base pages with their tags |
 | `POST /v1/files` | Admin. Upload one or more markdown pages (multipart field `files`, and `tags` once per tag id) and index them. A page with the same name is replaced, tags included; `sections` in the reply counts the sections of the uploaded pages |
 | `PUT /v1/files/<path>` | Admin. Body `{"tags": [...]}` replaces a page's tags |

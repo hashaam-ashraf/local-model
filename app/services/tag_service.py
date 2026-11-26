@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import paginate
@@ -33,11 +33,14 @@ def create_tag(db: Session, data: TagCreate) -> Tag:
 
 
 def delete_tag(db: Session, tag_id: UUID) -> None:
-    """The index keeps the id on its sections, which is harmless: no user can hold a deleted tag."""
+    """Refused while a file has the tag: an untagged file is open to every user, so taking a tag off
+    files must be done file by file, on purpose."""
     tag = db.get(Tag, tag_id)
     if not tag:
         raise HTTPException(404, "No such tag")
+    files = db.scalar(select(func.count()).select_from(file_tags).where(file_tags.c.tag_id == tag_id))
+    if files:
+        raise HTTPException(409, f"{tag.name} is still on {files} file(s). Change their tags first.")
     db.execute(delete(user_tags).where(user_tags.c.tag_id == tag_id))
-    db.execute(delete(file_tags).where(file_tags.c.tag_id == tag_id))
     db.delete(tag)
     db.commit()

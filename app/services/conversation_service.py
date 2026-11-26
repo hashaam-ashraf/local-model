@@ -68,7 +68,10 @@ def build_messages(settings: Settings, sections: list[Section], history: list[di
 
 
 def search_tags(user: User, requested: list[UUID] | None) -> list[str] | None:
-    """The tag ids a search is limited to; None means no limit. A user never reaches past their own tags."""
+    """The tag ids a search is limited to; None means no limit. A user never reaches past their own tags.
+
+    Untagged pages are open to everyone, and are searched too unless the request names tags.
+    """
     if user.role == ADMIN:
         return None if requested is None else [str(tag) for tag in requested]
     own = [tag.id for tag in user.tags]
@@ -94,7 +97,7 @@ def stream_answer(
     history = [{"role": m.role, "content": m.content} for m in conversation.messages]
     history.append({"role": "user", "content": message})
 
-    sections = store.search(llm.embed([message])[0], settings.top_k, search_tags(user, tags))
+    sections = store.search(llm.embed([message])[0], settings.top_k, search_tags(user, tags), untagged=tags is None)
     messages = build_messages(settings, sections, history[-MAX_HISTORY:])
 
     def generate():

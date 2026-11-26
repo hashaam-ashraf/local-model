@@ -106,7 +106,7 @@ app/services/*   Logic. Every model, index, file and database call lives here.
 
 **Services** (`app/services/`):
 - `user_service` — login, and the admin's list, create, update and delete of users. Services commit their own work. List queries go through `paginate` (`app/core/database.py`).
-- `tag_service` — tags; deleting one takes it off every user and file.
+- `tag_service` — tags; deleting one takes it off every user, and is refused while a file still has it.
 - `kb_service` — splits markdown pages into `Section`s by heading (the heading trail is kept, fenced code is not parsed for headings, hidden folders are skipped) and indexes them: `rebuild_index` for everything (only the reindex script calls it), `index_pages` for the pages an upload or delete touched. `list_pages` decides which files count as pages; listing, indexing and deleting all go through it. `page_tags` reads tag ids by page from the database, and every section is indexed with the tag ids of its page.
 - `file_service` — lists, saves, tags and deletes pages in `KB_ROOT`. The folder decides which pages exist; a `File` row only holds a page's tags, so a page without a row is simply untagged. `import_files` (run by the script) adds the missing rows and copies the database's tags onto the index. Uploads are validated as a batch before any is written (`.md`, UTF-8, at most `MAX_UPLOAD_MB`), and only the file name of an upload is used, so nothing can be written outside the folder. A delete must match a listed page.
 - `store_service` — `Store`, the only code that talks to Qdrant, bound to the one collection; `reset` drops it, `add` and `remove` change it a page at a time, `set_tags` relabels a page's sections without embedding, and `search` takes the tag ids to filter on (`None` for no limit).
@@ -119,7 +119,8 @@ app/services/*   Logic. Every model, index, file and database call lives here.
 - A conversation belongs to one user. Every read and write goes through `get_conversation`, which reports someone else's conversation as missing (404); only admins reach other users' conversations.
 - A message and its answer are saved together once the reply has streamed, so a failed reply leaves nothing behind. Creating a conversation saves no message; an untitled one takes its title from the first message.
 - `KB_RULES` (`app/constants/prompts.py`) is appended to `SYSTEM_PROMPT`, with only the retrieved sections — never the whole knowledge base.
-- A user's search is filtered by their tags inside the index query, never afterwards; untagged sections and users without tags match nothing. Only admins search without a filter. Tags a request names can narrow this, never widen it.
+- A user's search is filtered by their tags inside the index query, never afterwards; a user gets untagged sections plus those sharing one of their tags, so a tag restricts a file and no tags opens it to everyone (sections indexed before tags existed count as untagged). Only admins search without a filter. Tags a request names can narrow this, never widen it, and leave the untagged sections out.
+- Nothing may quietly leave a file untagged: a tag still on a file cannot be deleted (409).
 - A file's tags live in the database and on its indexed sections. Anything that changes them updates both in the same request.
 - Indexing and questions must use the same `EMBEDDING_MODEL`. Changing it means rebuilding the index (`scripts.reindex`).
 - Everything a request needs to fail on (no login, unknown conversation, embedding the question) happens before the streaming response starts, so errors still return a proper status code.

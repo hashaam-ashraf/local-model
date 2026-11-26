@@ -8,7 +8,9 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    IsEmptyCondition,
     MatchAny,
+    PayloadField,
     PayloadSchemaType,
     PointStruct,
     VectorParams,
@@ -64,10 +66,20 @@ class Store:
         if pages and self.exists():
             self.client.set_payload(self.collection, payload={"tags": tags}, points=self._pages(pages))
 
-    def search(self, vector: list[float], limit: int, tags: list[str] | None) -> list[Section]:
-        """The closest sections carrying one of the tags. None searches everything; no tags finds nothing."""
-        if tags == [] or not self.exists():
+    def search(self, vector: list[float], limit: int, tags: list[str] | None, untagged: bool) -> list[Section]:
+        """The closest sections carrying one of the tags, and with `untagged` those carrying none.
+
+        None for tags searches everything. A section indexed before tags existed counts as untagged.
+        """
+        if not self.exists():
             return []
-        only = tags and Filter(must=[FieldCondition(key="tags", match=MatchAny(any=tags))])
+        only = None
+        if tags is not None:
+            allowed = [FieldCondition(key="tags", match=MatchAny(any=tags))] if tags else []
+            if untagged:
+                allowed.append(IsEmptyCondition(is_empty=PayloadField(key="tags")))
+            if not allowed:
+                return []
+            only = Filter(should=allowed)
         hits = self.client.query_points(self.collection, query=vector, limit=limit, query_filter=only).points
         return [Section(hit.payload["page"], hit.payload["heading"], hit.payload["text"]) for hit in hits]
